@@ -1034,15 +1034,26 @@ class HTTPClient:
         r = Route('POST', '/webhooks/{application_id}/{interaction_token}',
                   application_id=application_id, interaction_token=interaction_token)
 
-        form = aiohttp.FormData()
-        form.add_field('payload_json', utils.to_json(payload))
+        form = []
+        form.append({'name' : 'payload_json', 'value' : utils.to_json(payload)})
         if len(files) == 1:
             file = files[0]
-            form.add_field('file', file.fp, filename=file.filename, content_type='application/octet-stream')
+            form.append({
+                'name': 'file',
+                'value': file.fp,
+                'filename': file.filename,
+                'content_type': 'application/octet-stream'
+            })
         else:
             for index, file in enumerate(files):
-                form.add_field('file%s' % index, file.fp, filename=file.filename, content_type='application/octet-stream')
-        return self.request(r, data=form, files=files)
+                form.append({
+                    'name': 'file%s' % index,
+                    'value': file.fp,
+                    'filename': file.filename,
+                    'content_type': 'application/octet-stream'
+                })
+                
+        return self.request(r, form=form, files=files)
 
     def edit_followup_message(self, application_id, interaction_token, message_id, **payload):
         r = Route('PATCH', '/webhooks/{application_id}/{interaction_token}/messages/{message_id}',
