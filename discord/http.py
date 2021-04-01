@@ -145,7 +145,6 @@ class HTTPClient:
         # header creation
         headers = {
             'User-Agent': self.user_agent,
-            'X-Ratelimit-Precision': 'millisecond', # Ignored, but is in miliseconds anyway
         }
 
         if self.token is not None:
@@ -960,7 +959,7 @@ class HTTPClient:
             'name' : name,
             'description' : description,
         }
-        if options != None:
+        if options is not None:
             payload['options'] = options
         r = Route('POST', '/applications/{application_id}/commands', application_id=application_id)
         return self.request(r, json=payload)
@@ -990,7 +989,7 @@ class HTTPClient:
             'name' : name,
             'description' : description,
         }
-        if options != None:
+        if options is not None:
             payload['options'] = options
         r = Route('POST', '/applications/{application_id}/guilds/{guild_id}/commands',
                   application_id=application_id, guild_id=guild_id)
@@ -1030,10 +1029,10 @@ class HTTPClient:
         r = Route('POST', '/webhooks/{application_id}/{interaction_token}',
                   application_id=application_id, interaction_token=interaction_token)
 
-        if (file != None or files != None):
+        if file is not None or files is not None:
             form = aiohttp.FormData()
             form.add_field('payload_json', utils.to_json(payload))
-            if file != None:
+            if file is not None:
                 if files is None:
                     files = []
                 files.append(file)
