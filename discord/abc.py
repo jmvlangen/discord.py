@@ -297,9 +297,9 @@ class GuildChannel:
                 }
 
                 if isinstance(target, Role):
-                    payload['type'] = PermissionOverwriteType.role.value
+                    payload['type'] = str(PermissionOverwriteType.role.value)
                 else:
-                    payload['type'] = PermissionOverwriteType.member.value
+                    payload['type'] = str(PermissionOverwriteType.member.value)
 
                 perms.append(payload)
             options['permission_overwrites'] = perms
@@ -326,7 +326,7 @@ class GuildChannel:
             overridden_id = int(overridden.pop('id'))
             self._overwrites.append(_Overwrites(id=overridden_id, **overridden))
 
-            if overridden['type'] == PermissionOverwriteType.member.value:
+            if overridden['type'] == str(PermissionOverwriteType.member.value):
                 continue
 
             if overridden_id == everyone_id:

@@ -71,9 +71,9 @@ def _transform_overwrites(entry, data):
         deny = Permissions(elem['deny'])
         ow = PermissionOverwrite.from_pair(allow, deny)
 
-        ow_type = elem['type']
+        ow_type = enums.try_enum(enums.PermissionOverwriteType, int(elem['type']))
         ow_id = int(elem['id'])
-        if ow_type == 'role':
+        if ow_type == enums.PermissionOverwriteType.role:
             target = entry.guild.get_role(ow_id)
         else:
             target = entry._get_member(ow_id)
