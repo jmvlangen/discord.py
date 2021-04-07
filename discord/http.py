@@ -1025,7 +1025,7 @@ class HTTPClient:
                   application_id=application_id, interaction_token=interaction_token)
         return self.request(r)
 
-    def send_followup_message(self, application_id, interaction_token, *, **payload):
+    def send_followup_message(self, application_id, interaction_token, **payload):
         r = Route('POST', '/webhooks/{application_id}/{interaction_token}',
                   application_id=application_id, interaction_token=interaction_token)
         return self.request(r, json=payload)
