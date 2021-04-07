@@ -35,10 +35,392 @@ from discord.abc import GuildChannel
 from discord.channel import TextChannel, VoiceChannel, CategoryChannel
 from discord.role import Role
 from discord.command import is_valid_name, is_valid_description, is_valid_choice_name, is_valid_choice_value
+from discord.command import ApplicationCommandOption
 from discord.errors import DiscordException
 
 COMMAND_GROUP_LIMIT = 25
 COMMAND_CHOICE_LIMIT = 25
+
+INDENT_PATTERN = re.compile("\s+")
+NAME_PATTERN = re.compile("[\w-]+")
+TYPE_PATTERN = re.compile("\s*:\s*(.+)")
+CHOICE_PATTERN = re.compile("-(.+):(.+)")
+
+class Argument:
+    """An argument of a :class:`.SlashCommand`
+
+    Attributes
+    -----------
+    name: :class:`str`
+        The name of this argument.
+    description: :class:`str`
+        The description of this argument.
+    required: :class: `bool`
+        Whether this argument is required or optional.
+
+    """
+    def __init__(self, *, name, description, required=True):
+        if not is_valid_name(name):
+            raise TypeError("The name '{name}' is not a valid name for a command argument.")
+        if not is_valid_description(description):
+            raise TypeError("The description '{description}' is not a valid description for a command argument.")
+        
+        self.name = name
+        self.description = description
+        self.required = required
+
+    def to_option(self):
+        """Give this command argument as a :class:`ApplicationCommandOption`.
+        
+        The :class:`ApplicationCommandOption` will have type
+        :ref:`ApplicationCommandOptionType.string` by
+        default. Overwrite this method for a different type.
+
+        """
+        return ApplicationCommandOption.string(name=self.name, description=self.description, required=self.required)
+
+    async def convert(self, value, *, client=None, guild=None):
+        """Convert ``value`` to the correct type in case it was given for this argument.
+
+        Overwrite this method to get custom argument types.
+        """
+        return str(value)
+
+class StringArgument(Argument):
+    """A string argument of a :class:`.SlashCommand`
+
+    Attributes
+    -----------
+    name: :class:`str`
+        The name of this argument.
+    description: :class:`str`
+        The description of this argument.
+    required: :class: `bool`
+        Whether this argument is required or optional.
+    choices: Mapping[:class:`str`, :class`str`]
+        A mapping of choice names to their corresponding values.
+        Is empty if there are no choices.
+
+    """
+    def __init__(self, *, name, description, required=True, choices=None):
+        super().__init__(name=name, description=description, required=required)
+
+        if choices is None:
+            choices = {}
+        if len(choices) > COMMAND_CHOICE_LIMIT:
+            raise TypeError(f"The number of choices of a command argument can not exceed {COMMAND_CHOICE_LIMIT}.")
+        for name, value in choices.items():
+            if not is_valid_choice_name(name):
+                raise TypeError(f"The name '{name}' is invalid for a choice")
+            if not is_valid_choice_value(value):
+                raise TypeError(f"The value '{value}' is invalid for a choice")
+
+        self.choices = choices
+
+    def to_option(self):
+        """Give this command argument as a :class:`ApplicationCommandOption`.
+        
+        The :class:`ApplicationCommandOption` will have type
+        :ref:`ApplicationCommandOptionType.string`.
+
+        """
+        return ApplicationCommandOption.string(name=self.name, description=self.description,
+                                               required=self.required, choices=self.choices)
+
+class IntegerArgument(Argument):
+    """An integer argument of a :class:`.SlashCommand`
+
+    Attributes
+    -----------
+    name: :class:`str`
+        The name of this argument.
+    description: :class:`str`
+        The description of this argument.
+    required: :class: `bool`
+        Whether this argument is required or optional.
+    choices: Mapping[:class:`str`, :class`int`]
+        A mapping of choice names to their corresponding values.
+        Is empty if there are no choices.
+
+    """
+    def __init__(self, *, name, description, required=True, choices=None):
+        super().__init__(name=name, description=description, required=required)
+
+        if choices is None:
+            choices = {}
+        if len(choices) > COMMAND_CHOICE_LIMIT:
+            raise TypeError(f"The number of choices of a command argument can not exceed {COMMAND_CHOICE_LIMIT}.")
+        for name, value in choices.items():
+            if not is_valid_choice_name(name):
+                raise TypeError(f"The name '{name}' is invalid for a choice")
+            if not isinstance(value, int):
+                raise TypeError(f"The value '{value}' is invalid for a choice")
+
+        self.choices = choices
+
+    def to_option(self):
+        """Give this command argument as a :class:`ApplicationCommandOption`.
+        
+        The :class:`ApplicationCommandOption` will have type
+        :ref:`ApplicationCommandOptionType.integer`.
+
+        """
+        return ApplicationCommandOption.integer(name=self.name, description=self.description,
+                                                required=self.required, choices=choices)
+
+    async def convert(self, value, *, client=None, guild=None):
+        """Convert ``value`` to an integer."""
+        return int(value)
+
+class BooleanArgument(Argument):
+    """A boolean argument of a :class:`.SlashCommand`
+
+    Attributes
+    -----------
+    name: :class:`str`
+        The name of this argument.
+    description: :class:`str`
+        The description of this argument.
+    required: :class: `bool`
+        Whether this argument is required or optional.
+
+    """
+
+    def to_option(self):
+        """Give this command argument as a :class:`ApplicationCommandOption`.
+        
+        The :class:`ApplicationCommandOption` will have type
+        :ref:`ApplicationCommandOptionType.boolean`
+
+        """
+        return ApplicationCommandOption.boolean(name=self.name, description=self.description, required=self.required)
+
+    async def convert(self, value, *, client=None, guild=None):
+        """Convert ``value`` to a boolean."""
+        return bool(value)
+
+class UserArgument(Argument):
+    """A User argument of a :class:`.SlashCommand`
+
+    Attributes
+    -----------
+    name: :class:`str`
+        The name of this argument.
+    description: :class:`str`
+        The description of this argument.
+    required: :class: `bool`
+        Whether this argument is required or optional.
+
+    """
+    def to_option(self):
+        """Give this command argument as a :class:`ApplicationCommandOption`.
+        
+        The :class:`ApplicationCommandOption` will have type
+        :ref:`ApplicationCommandOptionType.user`
+
+        """
+        return ApplicationCommandOption.user(name=self.name, description=self.description, required=self.required)
+
+    async def convert(self, value, *, client=None, guild=None):
+        """Convert ``value`` to a :class:`User`."""
+        if isinstance(value, User):
+            return value
+
+        if not isinstance(value, int):
+            value = int(value)
+            
+        if guild is not None:
+            member = guild.get_member(value)
+            if member is None:
+                member = await guild.fetch_member(value)
+            return member
+
+        if client is not None:
+            user = client.get_user(value)
+            if user is None:
+                user = await client.fetch_user(value)
+            return user
+
+        raise ArgumentError(f"Can not convert {value} to a user when missing client and guild.")
+
+class MemberArgument(UserArgument):
+    """A Member argument of a :class:`.SlashCommand`
+
+    Attributes
+    -----------
+    name: :class:`str`
+        The name of this argument.
+    description: :class:`str`
+        The description of this argument.
+    required: :class: `bool`
+        Whether this argument is required or optional.
+
+    """
+    async def convert(self, value, *, client=None, guild=None):
+        """Convert ``value`` to a :class:`Member`."""
+        if isinstance(value, Member):
+            return value
+
+        if isinstance(value, User):
+            user_id = value.id
+        else:
+            user_id = int(value)
+            
+        if guild is not None:
+            member = guild.get_member(user_id)
+            if member is None:
+                member = await guild.fetch_member(user_id)
+            return member
+
+        raise ArgumentError(f"Can not convert {value} into a Member when missing a guild.")
+
+class ChannelArgument(Argument):
+    """A Channel argument of a :class:`.SlashCommand`
+
+    Attributes
+    -----------
+    name: :class:`str`
+        The name of this argument.
+    description: :class:`str`
+        The description of this argument.
+    required: :class: `bool`
+        Whether this argument is required or optional.
+
+    """
+    def to_option(self):
+        """Give this command argument as a :class:`ApplicationCommandOption`.
+        
+        The :class:`ApplicationCommandOption` will have type
+        :ref:`ApplicationCommandOptionType.channel`
+
+        """
+        return ApplicationCommandOption.channel(name=self.name, description=self.description, required=self.required)
+
+    async def convert(self, value, *, client=None, guild=None):
+        """Convert ``value`` to a :class:`GuildChannel`."""
+        if isinstance(value, GuildChannel):
+            return value
+
+        if not isinstance(value, int):
+            value = int(value)
+            
+        if guild is not None:
+            channel = guild.get_channel(value)
+            if channel is None:
+                channel = await guild.fetch_channel(value)
+            return channel
+
+        if channel is not None:
+            channel = client.get_channel(value)
+            if channel is None:
+                channel = await client.fetch_channel(value)
+            return channel
+
+        raise ArgumentError(f"Can not convert {value} to a channel when missing client and guild.")
+
+class TextChannelArgument(ChannelArgument):
+    """A TextChannel argument of a :class:`.SlashCommand`
+
+    Attributes
+    -----------
+    name: :class:`str`
+        The name of this argument.
+    description: :class:`str`
+        The description of this argument.
+    required: :class: `bool`
+        Whether this argument is required or optional.
+
+    """
+    async def convert(self, value, *, client=None, guild=None):
+        """Convert ``value`` to a :class:`TextChannel`."""
+        channel = super().convert(value, client=client, guild=guild)
+        
+        if not isinstance(channel, TextChannel):
+            raise ArgumentError(f"The given channel {value} is not a TextChannel.")
+
+        return channel
+
+class VoiceChannelArgument(ChannelArgument):
+    """A VoiceChannel argument of a :class:`.SlashCommand`
+
+    Attributes
+    -----------
+    name: :class:`str`
+        The name of this argument.
+    description: :class:`str`
+        The description of this argument.
+    required: :class: `bool`
+        Whether this argument is required or optional.
+
+    """
+    async def convert(self, value, *, client=None, guild=None):
+        """Convert ``value`` to a :class:`VoiceChannel`."""
+        channel = super().convert(value, client=client, guild=guild)
+        
+        if not isinstance(channel, VoiceChannel):
+            raise ArgumentError(f"The given channel {value} is not a VoiceChannel.")
+
+        return channel
+
+class CategoryChannelArgument(ChannelArgument):
+    """A CategoryChannel argument of a :class:`.SlashCommand`
+
+    Attributes
+    -----------
+    name: :class:`str`
+        The name of this argument.
+    description: :class:`str`
+        The description of this argument.
+    required: :class: `bool`
+        Whether this argument is required or optional.
+
+    """
+    async def convert(self, value, *, client=None, guild=None):
+        """Convert ``value`` to a :class:`CategoryChannel`."""
+        channel = super().convert(value, client=client, guild=guild)
+        
+        if not isinstance(channel, TextChannel):
+            raise ArgumentError(f"The given channel {value} is not a CategoryChannel.")
+
+        return channel
+
+class RoleArgument(Argument):
+    """A User argument of a :class:`.SlashCommand`
+
+    Attributes
+    -----------
+    name: :class:`str`
+        The name of this argument.
+    description: :class:`str`
+        The description of this argument.
+    required: :class: `bool`
+        Whether this argument is required or optional.
+
+    """
+    def to_option(self):
+        """Give this command argument as a :class:`ApplicationCommandOption`.
+        
+        The :class:`ApplicationCommandOption` will have type
+        :ref:`ApplicationCommandOptionType.role`
+
+        """
+        return ApplicationCommandOption.role(name=self.name, description=self.description, required=self.required)
+
+    async def convert(self, value, *, client=None, guild=None):
+        """Convert ``value`` to a :class:`Role`."""
+        if isinstance(value, Role):
+            return value
+
+        if not isinstance(value, int):
+            value = int(value)
+            
+        if guild is not None:
+            role = guild.get_role(value)
+            if role is None:
+                await guild.fetch_roles()
+            return guild.get_role(value)
+
+        raise ArgumentError(f"Can not convert {value} to a role when missing a guild.")
 
 ARGUMENT_CLASS_DICT = {
     str : StringArgument,
@@ -52,11 +434,6 @@ ARGUMENT_CLASS_DICT = {
     CategoryChannel : CategoryChannelArgument,
     Role : RoleArgument,
 }
-
-INDENT_PATTERN = re.compile("\s+")
-NAME_PATTERN = re.compile("[\w-]+")
-TYPE_PATTERN = re.compile("\s*:\s*(.+)")
-CHOICE_PATTERN = re.compile("-(.+):(.+)")
 
 def _parse_command_doc(doc):
     doc = inspect.cleandoc(doc)
@@ -86,7 +463,7 @@ def _parse_command_doc(doc):
         
         arg_name = arg_name.group()
         indent1 = indent1.group()
-        nameline = lastline[len(name):]
+        nameline = lastline[len(arg_name):]
         arg_block[arg_name] = line[len(indent1):]
         
         arg_type = TYPE_PATTERN.match(nameline)
@@ -103,7 +480,7 @@ def _parse_command_doc(doc):
     arg_descriptions = {}
     arg_choices = {}
     
-    for arg_name, block in arg_block:
+    for arg_name, block in arg_block.items():
         lineIterator = iter(block.splitlines())
         try:
             arg_descriptions[arg_name] = next(lineIterator).strip()
@@ -190,7 +567,7 @@ class SlashCommand:
 
         self._callback = func
 
-        description, arg_types, arg_descriptions, arg_choices = _parse_command_doc(inspect.get_doc(func))
+        description, arg_types, arg_descriptions, arg_choices = _parse_command_doc(inspect.getdoc(func))
 
         self.description = kwargs.get(description) or description
         if not is_valid_description(description):
@@ -202,7 +579,7 @@ class SlashCommand:
         
         signature = inspect.signature(func)
 
-        params = iter(signature.parameters)
+        params = iter(signature.parameters.items())
         try:
             name, param = next(params)
         except StopIteration:
@@ -214,7 +591,7 @@ class SlashCommand:
         self.arguments = []
         add_additional = False
         for name, param in params:
-            if param.kind == Parameter.POSITIONAL_ONLY:
+            if param.kind == inspect.Parameter.POSITIONAL_ONLY:
                 raise TypeError("Command coroutine does not support positional only arguments.")
             if param.kind == inspect.Parameter.VAR_POSITIONAL:
                 raise TypeError("Command coroutine does not support capturing all positional arguments, like with '*args*'")
@@ -229,8 +606,8 @@ class SlashCommand:
                 type_ = eval(type_, func.__globals__)
                 
             cls = _get_argument_class(type_)
-            if not isinstance(cls, Argument):
-                raise TypeError(f"The type of the argument '{name}' must be a subclass of Argument, not {type_}")
+            if not issubclass(cls, Argument):
+                raise TypeError(f"The type of the argument '{name}' must be a subclass of Argument, not {cls}")
 
             choices = arg_choices.pop(name, None)
             if choices:
@@ -265,7 +642,7 @@ class SlashCommand:
     def callback(self):
         return self._callback
 
-    async def __call__(self, *args, **kwargs):
+    def __call__(self, *args, **kwargs):
         """|coro|
 
         Calls the internal callback of the command.
@@ -278,7 +655,12 @@ class SlashCommand:
                     for arg in self.arguments}
         except KeyError as e:
             raise SlashCommandError(f"Command {self.name} is missing argument '{e}'")
-        return self(interaction, **args)
+        return await self(interaction, **args)
+
+    @property
+    def options(self):
+        """List[:class:`ApplicationCommandOption`] The options of this command"""
+        return [arg.to_option() for arg in self.arguments]
 
     def to_option(self):
         """Give this command as a :class:`ApplicationCommandOption`.
@@ -288,7 +670,7 @@ class SlashCommand:
 
         """
         return ApplicationCommandOption.sub_command(name=self.name, description=self.description,
-                                                    options=[arg.to_option() for arg in self.arguments])
+                                                    options=self.options)
 
 class SlashGroup(SlashCommand):
     """An implementation of a Discord slash command group.
@@ -320,6 +702,11 @@ class SlashGroup(SlashCommand):
     def commands(self):
         """Set[:class:`.SlashCommand`]: A unique set of commands that are registered."""
         return set(self.all_commands.values())
+
+    @property
+    def options(self):
+        """List[:class:`ApplicationCommandOption`] The options of this command"""
+        return [command.to_option() for command in self.commands]
 
     def add_command(self, command):
         """Adds a :class:`.SlashCommand` into the internal list of commands.
@@ -375,13 +762,15 @@ class SlashGroup(SlashCommand):
         """
         return self.all_commands.get(name)
 
-    def command(self, func, **kwargs):
+    def command(self, **kwargs):
         """A shortcut decorator that invokes :func:`.command` and adds the
         command to the internal list of commands.
         """
-        command = command(func, **kwargs)
-        self.add_command(command)
-        return command
+        def decorator(func):
+            wrapped = command(**kwargs)(func)
+            self.add_command(wrapped)
+            return wrapped
+        return decorator
 
     async def invoke(self, *, interaction, options):
         result = None
@@ -399,387 +788,11 @@ class SlashGroup(SlashCommand):
 
         """
         return ApplicationCommandOption.sub_command_group(name=self.name, description=self.description,
-                                                          options=[command.to_option() for command in self.commands])
-
-class Argument:
-    """An argument of a :class:`.SlashCommand`
-
-    Attributes
-    -----------
-    name: :class:`str`
-        The name of this argument.
-    description: :class:`str`
-        The description of this argument.
-    required: :class: `bool`
-        Whether this argument is required or optional.
-
-    """
-    def __init__(self, *, name, description, required=True):
-        if not is_valid_name(name):
-            raise TypeError("The name '{name}' is not a valid name for a command argument.")
-        if not is_valid_description(description):
-            raise TypeError("The description '{description}' is not a valid description for a command argument.")
-        
-        self.name = name
-        self.description = description
-        self.required = required
-
-    def to_option(self):
-        """Give this command argument as a :class:`ApplicationCommandOption`.
-        
-        The :class:`ApplicationCommandOption` will have type
-        :ref:`ApplicationCommandOptionType.string` by
-        default. Overwrite this method for a different type.
-
-        """
-        return ApplicationCommandOption.string(name=self.name, description=self.description, required=self.required)
-
-    async def convert(value, *, client=None, guild=None):
-        """Convert ``value`` to the correct type in case it was given for this argument.
-
-        Overwrite this method to get custom argument types.
-        """
-        return str(value)
-
-class StringArgument(Argument):
-    """A string argument of a :class:`.SlashCommand`
-
-    Attributes
-    -----------
-    name: :class:`str`
-        The name of this argument.
-    description: :class:`str`
-        The description of this argument.
-    required: :class: `bool`
-        Whether this argument is required or optional.
-    choices: Mapping[:class:`str`, :class`str`]
-        A mapping of choice names to their corresponding values.
-        Is empty if there are no choices.
-
-    """
-    def __init__(self, *, name, description, required=True, choices=None):
-        super().__init__(name=name, description=description, required=required)
-
-        if choices is None:
-            choices = []
-        if len(choices) > COMMAND_CHOICE_LIMIT:
-            raise TypeError(f"The number of choices of a command argument can not exceed {COMMAND_CHOICE_LIMIT}.")
-        for name, value in choices.items():
-            if not is_valid_choice_name(name):
-                raise TypeError(f"The name '{name}' is invalid for a choice")
-            if not is valid_choice_value(value):
-                raise TypeError(f"The value '{value}' is invalid for a choice")
-
-        self.choices = choices
-
-    def to_option(self):
-        """Give this command argument as a :class:`ApplicationCommandOption`.
-        
-        The :class:`ApplicationCommandOption` will have type
-        :ref:`ApplicationCommandOptionType.string`.
-
-        """
-        return ApplicationCommandOption.string(name=self.name, description=self.description,
-                                               required=self.required, choices=self.choices)
-
-class IntegerArgument(Argument):
-    """An integer argument of a :class:`.SlashCommand`
-
-    Attributes
-    -----------
-    name: :class:`str`
-        The name of this argument.
-    description: :class:`str`
-        The description of this argument.
-    required: :class: `bool`
-        Whether this argument is required or optional.
-    choices: Mapping[:class:`str`, :class`int`]
-        A mapping of choice names to their corresponding values.
-        Is empty if there are no choices.
-
-    """
-    def __init__(self, *, name, description, required=True, choices=None):
-        super().__init__(name=name, description=description, required=required)
-
-        if choices is None:
-            choices = []
-        if len(choices) > COMMAND_CHOICE_LIMIT:
-            raise TypeError(f"The number of choices of a command argument can not exceed {COMMAND_CHOICE_LIMIT}.")
-        for name, value in choices.items():
-            if not is_valid_choice_name(name):
-                raise TypeError(f"The name '{name}' is invalid for a choice")
-            if not isinstance(value, int)
-                raise TypeError(f"The value '{value}' is invalid for a choice")
-
-        self.choices = choices
-
-    def to_option(self):
-        """Give this command argument as a :class:`ApplicationCommandOption`.
-        
-        The :class:`ApplicationCommandOption` will have type
-        :ref:`ApplicationCommandOptionType.integer`.
-
-        """
-        return ApplicationCommandOption.integer(name=self.name, description=self.description,
-                                                required=self.required, choices=choices)
-
-    async def convert(value, *, client=None, guild=None):
-        """Convert ``value`` to an integer."""
-        return int(value)
-
-class BooleanArgument(Argument):
-    """A boolean argument of a :class:`.SlashCommand`
-
-    Attributes
-    -----------
-    name: :class:`str`
-        The name of this argument.
-    description: :class:`str`
-        The description of this argument.
-    required: :class: `bool`
-        Whether this argument is required or optional.
-
-    """
-
-    def to_option(self):
-        """Give this command argument as a :class:`ApplicationCommandOption`.
-        
-        The :class:`ApplicationCommandOption` will have type
-        :ref:`ApplicationCommandOptionType.boolean`
-
-        """
-        return ApplicationCommandOption.boolean(name=self.name, description=self.description, required=self.required)
-
-    async def convert(value, *, client=None, guild=None):
-        """Convert ``value`` to a boolean."""
-        return bool(value)
-
-class UserArgument(Argument):
-    """A User argument of a :class:`.SlashCommand`
-
-    Attributes
-    -----------
-    name: :class:`str`
-        The name of this argument.
-    description: :class:`str`
-        The description of this argument.
-    required: :class: `bool`
-        Whether this argument is required or optional.
-
-    """
-    def to_option(self):
-        """Give this command argument as a :class:`ApplicationCommandOption`.
-        
-        The :class:`ApplicationCommandOption` will have type
-        :ref:`ApplicationCommandOptionType.user`
-
-        """
-        return ApplicationCommandOption.user(name=self.name, description=self.description, required=self.required)
-
-    async def convert(value, *, client=None, guild=None):
-        """Convert ``value`` to a :class:`User`."""
-        if isinstance(value, User):
-            return value
-
-        if not isinstance(value, int):
-            value = int(value)
-            
-        if guild is not None:
-            member = guild.get_member(value)
-            if member is None:
-                member = await guild.fetch_member(value)
-            return member
-
-        if client is not None:
-            user = client.get_user(value)
-            if user is None:
-                user = await client.fetch_user(value)
-            return user
-
-        raise ArgumentError(f"Can not convert {value} to a user when missing client and guild.")
-
-class MemberArgument(UserArgument):
-    """A Member argument of a :class:`.SlashCommand`
-
-    Attributes
-    -----------
-    name: :class:`str`
-        The name of this argument.
-    description: :class:`str`
-        The description of this argument.
-    required: :class: `bool`
-        Whether this argument is required or optional.
-
-    """
-    async def convert(value, *, client=None, guild=None):
-        """Convert ``value`` to a :class:`Member`."""
-        if isinstance(value, Member):
-            return value
-
-        if isinstance(value, User):
-            user_id = value.id
-        else:
-            user_id = int(value)
-            
-        if guild is not None:
-            member = guild.get_member(user_id)
-            if member is None:
-                member = await guild.fetch_member(user_id)
-            return member
-
-        raise ArgumentError(f"Can not convert {value} into a Member when missing a guild.")
-
-class ChannelArgument(Argument):
-    """A Channel argument of a :class:`.SlashCommand`
-
-    Attributes
-    -----------
-    name: :class:`str`
-        The name of this argument.
-    description: :class:`str`
-        The description of this argument.
-    required: :class: `bool`
-        Whether this argument is required or optional.
-
-    """
-    def to_option(self):
-        """Give this command argument as a :class:`ApplicationCommandOption`.
-        
-        The :class:`ApplicationCommandOption` will have type
-        :ref:`ApplicationCommandOptionType.channel`
-
-        """
-        return ApplicationCommandOption.channel(name=self.name, description=self.description, required=self.required)
-
-    async def convert(value, *, client=None, guild=None):
-        """Convert ``value`` to a :class:`GuildChannel`."""
-        if isinstance(value, GuildChannel):
-            return value
-
-        if not isinstance(value, int):
-            value = int(value)
-            
-        if guild is not None:
-            channel = guild.get_channel(value)
-            if channel is None:
-                channel = await guild.fetch_channel(value)
-            return channel
-
-        if channel is not None:
-            channel = client.get_channel(value)
-            if channel is None:
-                channel = await client.fetch_channel(value)
-            return channel
-
-        raise ArgumentError(f"Can not convert {value} to a channel when missing client and guild.")
-
-class TextChannelArgument(ChannelArgument):
-    """A TextChannel argument of a :class:`.SlashCommand`
-
-    Attributes
-    -----------
-    name: :class:`str`
-        The name of this argument.
-    description: :class:`str`
-        The description of this argument.
-    required: :class: `bool`
-        Whether this argument is required or optional.
-
-    """
-    async def convert(value, *, client=None, guild=None):
-        """Convert ``value`` to a :class:`TextChannel`."""
-        channel = super().convert(value, client=client, guild=guild)
-        
-        if not isinstance(channel, TextChannel):
-            raise ArgumentError(f"The given channel {value} is not a TextChannel.")
-
-        return channel
-
-class VoiceChannelArgument(ChannelArgument):
-    """A VoiceChannel argument of a :class:`.SlashCommand`
-
-    Attributes
-    -----------
-    name: :class:`str`
-        The name of this argument.
-    description: :class:`str`
-        The description of this argument.
-    required: :class: `bool`
-        Whether this argument is required or optional.
-
-    """
-    async def convert(value, *, client=None, guild=None):
-        """Convert ``value`` to a :class:`VoiceChannel`."""
-        channel = super().convert(value, client=client, guild=guild)
-        
-        if not isinstance(channel, VoiceChannel):
-            raise ArgumentError(f"The given channel {value} is not a VoiceChannel.")
-
-        return channel
-
-class CategoryChannelArgument(ChannelArgument):
-    """A CategoryChannel argument of a :class:`.SlashCommand`
-
-    Attributes
-    -----------
-    name: :class:`str`
-        The name of this argument.
-    description: :class:`str`
-        The description of this argument.
-    required: :class: `bool`
-        Whether this argument is required or optional.
-
-    """
-    async def convert(value, *, client=None, guild=None):
-        """Convert ``value`` to a :class:`CategoryChannel`."""
-        channel = super().convert(value, client=client, guild=guild)
-        
-        if not isinstance(channel, TextChannel):
-            raise ArgumentError(f"The given channel {value} is not a CategoryChannel.")
-
-        return channel
-
-class RoleArgument(Argument):
-    """A User argument of a :class:`.SlashCommand`
-
-    Attributes
-    -----------
-    name: :class:`str`
-        The name of this argument.
-    description: :class:`str`
-        The description of this argument.
-    required: :class: `bool`
-        Whether this argument is required or optional.
-
-    """
-    def to_option(self):
-        """Give this command argument as a :class:`ApplicationCommandOption`.
-        
-        The :class:`ApplicationCommandOption` will have type
-        :ref:`ApplicationCommandOptionType.role`
-
-        """
-        return ApplicationCommandOption.role(name=self.name, description=self.description, required=self.required)
-
-    async def convert(value, *, client=None, guild=None):
-        """Convert ``value`` to a :class:`Role`."""
-        if isinstance(value, Role):
-            return value
-
-        if not isinstance(value, int):
-            value = int(value)
-            
-        if guild is not None:
-            role = guild.get_role(value)
-            if role is None:
-                await guild.fetch_roles()
-            return guild.get_role(value)
-
-        raise ArgumentError(f"Can not convert {value} to a role when missing a guild.")
+                                                          options=self.options)
 
 # Decorators
 
-def command(*, **attrs):
+def command(**attrs):
     """A decorator that transforms a coroutine into a :class:`.Command`.
 
     By default the ``name`` attribute will be equal to the coroutine's name.
