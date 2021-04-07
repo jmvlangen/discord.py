@@ -28,7 +28,7 @@ import copy
 
 from discord import Client
 from discord.enums import InteractionType
-from .core import SlashCommand, SlashCommandRegistrationError
+from .core import SlashCommand, SlashCommandRegistrationError, command
 
 COMMAND_LIMIT = 100
 
@@ -40,7 +40,7 @@ class SlashClient(Client):
 
     def dispatch(self, event_name, *args, **kwargs):
         if event_name == 'ready':
-            self._schedule_event(self._sync_commands(), 'on_' + event_name, *args, **kwargs)
+            self._schedule_event(self._sync_commands, 'on_' + event_name, *args, **kwargs)
         super().dispatch(event_name, *args, **kwargs)
 
     def add_command(self, command, guild_id=None):
@@ -112,47 +112,47 @@ class SlashClient(Client):
         except KeyError:
             return None
 
-    def command(self, func, guild_id=None, **kwargs):
+    def command(self, guild_id=None, **kwargs):
         """A shortcut decorator that invokes :func:`.command` and adds the
         command to the internal list of commands.
         """
-        command = command(func, **kwargs)
-        self.add_command(command, guild_id=guild_id)
-        return command
+        def decorator(func):
+            wrapped = command(**kwargs)(func)
+            self.add_command(wrapped, guild_id=guild_id)
+            return wrapped
+        return decorator
 
     async def _sync_guild_commands(self, guild):
         commands_copy = copy.copy(self._commands.get(guild.id, {}))
-        for app_command in guild.fetch_application_commands():
+        for app_command in await guild.fetch_application_commands():
             try:
                 command = commands_copy.pop(app_command.name)
             except KeyError:
                 await app_command.delete()
             else:
-                option = command.to_option()
-                if not (app_command.name == option['name'] and
-                        app_command.description == option['description'] and
-                        app_command.options == option['options']):
-                    await app_command.edit(**option)
+                if not (app_command.name == command.name and
+                        app_command.description == command.description and
+                        app_command.options == command.options):
+                    await app_command.edit(name=command.name, description=command.description, options=command.options)
 
-        for command in commands_copy:
-            await guild.create_application_command(**command.to_option())
+        for command in commands_copy.values():
+            await guild.create_application_command(name=command.name, description=command.description, options=command.options)
         
     async def _sync_global_commands(self):
         commands_copy = copy.copy(self._commands.get(None, {}))
-        for app_command in client.fetch_global_commands():
+        for app_command in await self.fetch_global_commands():
             try:
                 command = commands_copy.pop(app_command.name)
             except KeyError:
                 await app_command.delete()
             else:
-                option = command.to_option()
-                if not (app_command.name == option['name'] and
-                        app_command.description == option['description'] and
-                        app_command.options == option['options']):
-                    await app_command.edit(**option)
+                if not (app_command.name == command.name and
+                        app_command.description == command.description and
+                        app_command.options == command.options):
+                    await app_command.edit(name=command.name, description=command.description, options=command.options)
 
-        for command in commands_copy:
-            await client.create_global_command(**command.to_option())
+        for command in commands_copy.values():
+            await self.create_global_command(name=command.name, description=command.description, options=command.options)
     
     async def _sync_commands(self):
         await self._sync_global_commands()
@@ -163,8 +163,15 @@ class SlashClient(Client):
         if interaction.type == InteractionType.ping:
             await interaction.send_response()
             
-        if interaction.type == InteractionType.command:
-            command = self._commands[interaction.command.guild][interaction.command.name]
-            result = await command.invoke(interaction, **interaction.options)
+        if interaction.type == InteractionType.application_command:
+            name = interaction.command.name
+            guild_id = interaction.command.guild and interaction.command.guild.id
+            command = self.get_command(name, guild_id=guild_id)
+            if command is None:
+                await interaction.send_response("No implementation available", ethemeral=True)
+            result = await command.invoke(interaction=interaction, options=interaction.options, client=self)
             if not interaction.responded:
-                interaction.send_response(result)
+                if result:
+                    await interaction.send_response(result)
+                else:
+                    await interaction.send_response("Command had no response", ethemeral=True)
