@@ -166,7 +166,7 @@ class IntegerArgument(Argument):
 
         """
         return ApplicationCommandOption.integer(name=self.name, description=self.description,
-                                                required=self.required, choices=choices)
+                                                required=self.required, choices=self.choices)
 
     async def convert(self, value, *, client=None, guild=None):
         """Convert ``value`` to an integer."""
@@ -652,7 +652,7 @@ class SlashCommand:
     async def invoke(self, *, interaction, options, client):
         try:
             args = {arg.name : await arg.convert(options[arg.name], client=client, guild=interaction.guild)
-                    for arg in self.arguments}
+                    for arg in self.arguments if arg.name in options}
         except KeyError as e:
             raise SlashCommandError(f"Command {self.name} is missing argument '{e}'")
         return await self(interaction, **args)
@@ -719,7 +719,7 @@ class SlashGroup(SlashCommand):
         if not isinstance(command, SlashCommand):
             raise TypeError(f"The command '{command}' passed is not a command.")
 
-        if isinstance(self, Group):
+        if isinstance(self, SlashGroup):
             command.parent = self
 
         if command.name in self.all_commands:
@@ -772,11 +772,11 @@ class SlashGroup(SlashCommand):
             return wrapped
         return decorator
 
-    async def invoke(self, *, interaction, options):
+    async def invoke(self, *, interaction, options, client):
         result = None
         for name, command in self.all_commands:
             if name in options:
-                result = await command.invoke(interaction=interaction, options=options[name])
+                result = await command.invoke(interaction=interaction, options=options[name], client=client)
 
         return result
 
