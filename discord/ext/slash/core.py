@@ -774,7 +774,7 @@ class SlashGroup(SlashCommand):
 
     async def invoke(self, *, interaction, options, client):
         result = None
-        for name, command in self.all_commands:
+        for name, command in self.all_commands.items():
             if name in options:
                 result = await command.invoke(interaction=interaction, options=options[name], client=client)
 
