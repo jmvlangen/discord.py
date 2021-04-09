@@ -663,7 +663,7 @@ class GuildChannel:
             await http.delete_channel_permissions(self.id, target.id, reason=reason)
         elif isinstance(overwrite, PermissionOverwrite):
             (allow, deny) = overwrite.pair()
-            await http.edit_channel_permissions(self.id, target.id, allow.value, deny.value, perm_type, reason=reason)
+            await http.edit_channel_permissions(self.id, target.id, allow.value, deny.value, perm_type.value, reason=reason)
         else:
             raise InvalidArgument('Invalid overwrite type provided.')
 
