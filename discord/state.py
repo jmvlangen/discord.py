@@ -52,6 +52,7 @@ from .flags import ApplicationFlags, Intents, MemberCacheFlags
 from .object import Object
 from .invite import Invite
 from .interactions import Interaction
+from .command import ApplicationCommand
 
 class ChunkRequest:
     def __init__(self, guild_id, loop, resolver, *, cache=True):
@@ -180,6 +181,8 @@ class ConnectionState:
             if attr.startswith('parse_'):
                 parsers[attr[6:].upper()] = func
 
+        self._commands = {}
+
         self.clear()
 
     def clear(self):
@@ -306,6 +309,33 @@ class ConnectionState:
 
     def get_emoji(self, emoji_id):
         return self._emojis.get(emoji_id)
+
+    @property
+    def commands(self):
+        return list(self._commands.values())
+
+    def _add_command(self, command):
+        self._commands[command.id] = command
+        if isinstance(command.guild, Guild):
+            command.guild._add_command(command)
+
+    def _get_command(self, command_id):
+        return self._commands.get(command_id)
+
+    def _store_command(self, data):
+        guild = self._get_guild(utils._get_as_snowflake(data, 'guild_id'))
+        command = self._get_command(utils._get_as_snowflake(data, 'id'))
+        if command is None:
+            command = ApplicationCommand(state=self, guild=guild, data=data)
+            self._add_command(command)
+        else:
+            command._update(guild=guild, data=data)
+        return command
+
+    def _remove_command(self, command):
+        self._commands.pop(command.id, None)
+        if isinstance(command.guild, Guild):
+            command.guild._remove_command(command)
 
     @property
     def private_channels(self):
@@ -443,6 +473,7 @@ class ConnectionState:
         self._ready_state = asyncio.Queue()
         self.clear()
         self.user = user = ClientUser(state=self, data=data['user'])
+        self.application_id = utils._get_as_snowflake(data['application'], 'id')
         self._users[user.id] = user
 
         if self.application_id is None:
@@ -1000,6 +1031,20 @@ class ConnectionState:
                 timestamp = datetime.datetime.utcfromtimestamp(data.get('timestamp'))
                 timestamp = timestamp.replace(tzinfo=datetime.timezone.utc)
                 self.dispatch('typing', channel, member, timestamp)
+
+    def parse_application_command_create(self, data):
+        command = self._store_command(data)
+        self.dispatch('application_command_create', command)
+
+    def parse_application_command_update(self, data):
+        old_command = self._get_command(utils._get_as_snowflake(data, 'id')).copy()
+        command = self._store_command(data)
+        self.dispatch('application_command_update', old_command, command)
+
+    def parse_application_command_delete(self, data):
+        command = self._store_command(data)
+        self.dispatch('application_command_delete', command)
+        self._remove_command(command)
 
     def _get_reaction_user(self, channel, user_id):
         if isinstance(channel, TextChannel):

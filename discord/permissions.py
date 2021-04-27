@@ -94,7 +94,10 @@ class Permissions(BaseFlags):
 
     def __init__(self, permissions=0, **kwargs):
         if not isinstance(permissions, int):
-            raise TypeError(f'Expected int parameter, received {permissions.__class__.__name__} instead.')
+            try:
+                permissions = int(permissions)
+            except ValueError:
+                raise TypeError(f'Expected int parameter, received {permissions.__class__.__name__} instead.')
 
         self.value = permissions
         for key, value in kwargs.items():

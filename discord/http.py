@@ -1201,14 +1201,14 @@ class HTTPClient:
 
         return self.request(route, form=form, files=[file])
 
-    def create_interaction_response(self, interaction_id, token):
+    def create_interaction_response(self, interaction_id, token, payload):
         r = Route(
             'POST',
             '/interactions/{interaction_id}/{interaction_token}/callback',
             interaction_id=interaction_id,
             interaction_token=token,
         )
-        return self.request(r)
+        return self.request(r, json=payload)
 
     def get_original_interaction_response(
         self,

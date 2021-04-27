@@ -443,6 +443,23 @@ class VideoQualityMode(Enum):
     def __int__(self):
         return self.value
 
+class InteractionResponseType(Enum):
+    pong = 1
+    acknowledge = 2 # deprecated
+    channel_message = 3 # deprecated
+    channel_message_with_source = 4
+    deferred_channel_message_with_source = 5
+
+class ApplicationCommandOptionType(Enum):
+    sub_command = 1
+    sub_command_group = 2
+    string = 3
+    integer = 4
+    boolean = 5
+    user = 6
+    channel = 7
+    role = 8
+
 T = TypeVar('T')
 
 def create_unknown_value(cls: Type[T], val: Any) -> T:

@@ -384,7 +384,7 @@ class DiscordWebSocket:
         if state._activity is not None or state._status is not None:
             payload['d']['presence'] = {
                 'status': state._status,
-                'game': state._activity,
+                'activities': [state._activity],
                 'since': 0,
                 'afk': False
             }
