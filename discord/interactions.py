@@ -110,7 +110,7 @@ class Interaction:
     @property
     def guild(self) -> Optional[Guild]:
         """Optional[:class:`Guild`]: The guild the interaction was sent from."""
-        return self._state and self._state.get_guild(self.guild_id)
+        return self._state and self._state._get_guild(self.guild_id)
 
     @property
     def channel(self) -> Optional[GuildChannel]:

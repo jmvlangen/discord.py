@@ -184,10 +184,10 @@ class ApplicationCommand(Hashable):
             payload['options'] = options
 
         if self.guild is None:
-            data = await self._state.http.edit_global_application_command(self.application_id, self.id, **payload)
+            data = await self._state.http.edit_global_command(self.application_id, self.id, payload)
         else:
-            data = await self._state.http.edit_guild_application_command(self.application_id, self.guild.id,
-                                                                         self.id, **payload)
+            data = await self._state.http.edit_guild_command(self.application_id, self.guild.id,
+                                                             self.id, payload)
         self._update(data=data)
 
     async def delete(self):
@@ -202,9 +202,9 @@ class ApplicationCommand(Hashable):
 
         """
         if self.guild is None:
-            await self._state.http.delete_global_application_command(self.application_id, self.id)
+            await self._state.http.delete_global_command(self.application_id, self.id)
         else:
-            await self._state.http.delete_guild_application_command(self.application_id, self.guild.id, self.id)
+            await self._state.http.delete_guild_command(self.application_id, self.guild.id, self.id)
         self._state._remove_command(self)
 
 class ApplicationCommandOption:
@@ -398,7 +398,7 @@ class ApplicationCommandOption:
             if not is_valid_choice_value(v):
                 raise InvalidArgument(f"The value '{v}' is not valid for a choice.")
             choice_list.append({'name' : n, 'value' : v})
-        t = ApplicationCommandOptionType.string
+        t = ApplicationCommandOptionType.string.value
         return cls(data={'type' : t, 'name' : name, 'description' : description,
                          'required' : required, 'choices' : choice_list})
 
@@ -441,7 +441,7 @@ class ApplicationCommandOption:
             if not isinstance(v, int):
                 raise InvalidArgument(f"The value '{v}' is not valid for a choice.")
             choice_list.append({'name' : n, 'value' : v})
-        t = ApplicationCommandOptionType.integer
+        t = ApplicationCommandOptionType.integer.value
         return cls(data={'type' : t, 'name' : name, 'description' : description,
                          'required' : required, 'choices' : choice_list})
 
@@ -469,7 +469,7 @@ class ApplicationCommandOption:
             raise InvalidArgument(f"The name '{name}' is not valid.")
         if not is_valid_description(description):
             raise InvalidArgument(f"The description '{description}' is not valid.")
-        t = ApplicationCommandOptionType.boolean
+        t = ApplicationCommandOptionType.boolean.value
         return cls(data={'type' : t, 'name' : name, 'description' : description, 'required' : required})
 
     @classmethod
@@ -496,7 +496,7 @@ class ApplicationCommandOption:
             raise InvalidArgument(f"The name '{name}' is not valid.")
         if not is_valid_description(description):
             raise InvalidArgument(f"The description '{description}' is not valid.")
-        t = ApplicationCommandOptionType.user
+        t = ApplicationCommandOptionType.user.value
         return cls(data={'type' : t, 'name' : name, 'description' : description, 'required' : required})
 
     @classmethod
@@ -523,7 +523,7 @@ class ApplicationCommandOption:
             raise InvalidArgument(f"The name '{name}' is not valid.")
         if not is_valid_description(description):
             raise InvalidArgument(f"The description '{description}' is not valid.")
-        t = ApplicationCommandOptionType.channel
+        t = ApplicationCommandOptionType.channel.value
         return cls(data={'type' : t, 'name' : name, 'description' : description, 'required' : required})
 
     @classmethod
@@ -550,7 +550,7 @@ class ApplicationCommandOption:
             raise InvalidArgument(f"The name '{name}' is not valid.")
         if not is_valid_description(description):
             raise InvalidArgument(f"The description '{description}' is not valid.")
-        t = ApplicationCommandOptionType.role
+        t = ApplicationCommandOptionType.role.value
         return cls(data={'type' : t, 'name' : name, 'description' : description, 'required' : required})
 
 class ApplicationCommandOptionChoice:

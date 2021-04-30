@@ -175,7 +175,7 @@ class Guild(Hashable):
                  '_voice_states', '_system_channel_id', 'default_notifications',
                  'description', 'max_presences', 'max_members', 'max_video_channel_users',
                  'premium_tier', 'premium_subscription_count', '_system_channel_flags',
-                 'preferred_locale', 'discovery_splash', '_rules_channel_id',
+                 'preferred_locale', '_discovery_splash', '_rules_channel_id',
                  '_public_updates_channel_id', 'nsfw', '_commands')
 
     _PREMIUM_GUILD_LIMITS = {
@@ -1025,9 +1025,15 @@ class Guild(Hashable):
         if options is None:
             options = []
         options = [option.to_dict() for option in options]
-        data = await self._state.http.create_guild_application_command(self._state.application_id,
-                                                                       self.id, name=name, description=description,
-                                                                       options=options)
+        data = await self._state.http.upsert_guild_command(
+            self._state.application_id,
+            self.id,
+            {
+                'name': name,
+                'description': description,
+                'options': options,
+            }
+        )
         return self._state._store_command(data)
 
     async def leave(self):
@@ -1306,7 +1312,7 @@ class Guild(Hashable):
             A list of the commands for this guild.
 
         """
-        data = await self._state.http.get_guild_application_commands(self._state.application_id, self.id)
+        data = await self._state.http.get_guild_commands(self._state.application_id, self.id)
         return [self._state._store_command(command) for command in data]
 
     async def fetch_application_command(self, command_id):
@@ -1332,8 +1338,8 @@ class Guild(Hashable):
             The command with the given ID.
 
         """
-        data = await self._state.http.get_guild_application_command(self._state.application_id,
-                                                                    self.id, command_id)
+        data = await self._state.http.get_guild_command(self._state.application_id,
+                                                        self.id, command_id)
         return self._state._store_command(data)
 
     def fetch_members(self, *, limit=1000, after=None):

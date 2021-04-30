@@ -1266,9 +1266,14 @@ class Client:
         if options is None:
             options = []
         options = [option.to_dict() for option in options]
-        data = await self.http.create_global_application_command(self._connection.application_id,
-                                                                 name=name, description=description,
-                                                                 options=options)
+        data = await self.http.create_global_application_command(
+            self._connection.application_id,
+            {
+                'name': name,
+                'description': description,
+                'options': options,
+            }
+        )
         return self._connection._store_command(data)
 
     async def fetch_global_command(self, command_id):
