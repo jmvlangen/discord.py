@@ -1215,7 +1215,7 @@ class Client:
         List[:class:`.ApplicationCommand`]
             A list of the global commands for this Discord application.
         """
-        data = await self.http.get_global_application_commands(self._connection.application_id)
+        data = await self.http.get_global_commands(self._connection.application_id)
         return [self._connection._store_command(command) for command in data]
 
     @property
@@ -1266,7 +1266,7 @@ class Client:
         if options is None:
             options = []
         options = [option.to_dict() for option in options]
-        data = await self.http.create_global_application_command(
+        data = await self.http.create_global_command(
             self._connection.application_id,
             {
                 'name': name,
@@ -1299,7 +1299,7 @@ class Client:
             The command with the given ID.
 
         """
-        data = await self.http.get_global_application_command(self._connection.application_id, command_id)
+        data = await self.http.get_global_command(self._connection.application_id, command_id)
         return self._connection._store_command(data)
 
     def get_application_command(self, command_id):

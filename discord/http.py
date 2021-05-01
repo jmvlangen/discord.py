@@ -1199,7 +1199,10 @@ class HTTPClient:
                 }
             )
 
-        return self.request(route, form=form, files=[file])
+        if file is None:
+            return self.request(route, form=form)
+        else:
+            return self.request(route, form=form, files=[file])
 
     def create_interaction_response(self, interaction_id, token, payload):
         r = Route(

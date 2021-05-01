@@ -318,7 +318,7 @@ class ApplicationCommandOption:
         for option in options:
             if option.type not in SUB_COMMAND_OPTIONS:
                 raise InvalidArgument(f"Options of type '{option.type}' are invalid for sub commands.")
-        t = ApplicationCommandOptionType.sub_command
+        t = ApplicationCommandOptionType.sub_command.value
         return cls(data={'type' : t, 'name' : name, 'description' : description,
                          'options' : [option.to_dict() for option in options]})
 
@@ -355,7 +355,7 @@ class ApplicationCommandOption:
         for option in options:
             if option.type not in SUB_COMMAND_GROUP_OPTIONS:
                 raise InvalidArgument(f"Options of type '{option.type}' are invalid for sub command groups.")
-        t = ApplicationCommandOptionType.sub_command_group
+        t = ApplicationCommandOptionType.sub_command_group.value
         return cls(data={'type' : t, 'name' : name, 'description' : description,
                          'options' : [option.to_dict() for option in options]})
 
