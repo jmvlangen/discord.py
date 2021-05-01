@@ -223,7 +223,7 @@ class UserArgument(Argument):
 
     async def convert(self, value, *, client=None, guild=None):
         """Convert ``value`` to a :class:`User`."""
-        if isinstance(value, User):
+        if isinstance(value, User) or isinstance(value, Member):
             return value
 
         if not isinstance(value, int):

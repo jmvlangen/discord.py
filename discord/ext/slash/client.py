@@ -25,12 +25,127 @@ DEALINGS IN THE SOFTWARE.
 """
 
 import copy
+import logging
 
-from discord import Client
-from discord.enums import InteractionType
+from discord import Client, Member, Role
+from discord.enums import InteractionType, ApplicationCommandOptionType
 from .core import SlashCommand, SlashCommandRegistrationError, command
 
 COMMAND_LIMIT = 100
+
+log = logging.getLogger(__name__)
+
+
+def _parse_interaction_data_resolved(*, resolved_data, guild, state):
+    if resolved_data is None:
+        return {}, {}, {}, {}
+    for member_id, member_data in resolved_data.get('members', {}).items():
+        try:
+            member_data['user'] = resolved_data.get('users', {})[member_id]
+        except KeyError:
+            pass
+    users = {
+        int(user_id): state.store_user(user_data)
+        for user_id, user_data in resolved_data.get('users', {}).items()
+    }
+    members = {
+        int(member_id): Member(
+            data=member_data,
+            guild=guild,
+            state=state,
+        )
+        for member_id, member_data in resolved_data.get('members', {}).items()
+    }
+    roles = {
+        int(role_id): Role(
+            data=role_data,
+            guild=guild,
+            state=state,
+        )
+        for role_id, role_data in resolved_data.get('roles', {}).items()
+    }
+    if guild is not None:
+        channels = {
+            int(channel_id): state._get_guild_channel({
+                'guild_id': guild.id,
+                **channel_data
+            })
+            for channel_id, channel_data in resolved_data.get('channels', {}).items()
+        }
+    else:
+        # Can not resolve channels, let's assume they do not exist
+        channels = {}
+
+    return users, members, roles, channels
+
+
+def _parse_interaction_options(*, options, users, members, roles, channels):
+    result = {}
+    for option in options:
+        name = option['name']
+        if option['type'] == ApplicationCommandOptionType.sub_command.value:
+            value = _parse_interaction_options(
+                options=option.get('options', []),
+                users=users,
+                members=members,
+                roles=roles,
+                channels=channels,
+            )
+        elif option['type'] == ApplicationCommandOptionType.sub_command_group.value:
+            value = _parse_interaction_options(
+                options=option.get('options', []),
+                users=users,
+                members=members,
+                roles=roles,
+                channels=channels,
+            )
+        elif option['type'] == ApplicationCommandOptionType.string.value:
+            value = str(option['value'])
+        elif option['type'] == ApplicationCommandOptionType.integer.value:
+            value = int(option['value'])
+        elif option['type'] == ApplicationCommandOptionType.boolean.value:
+            value = bool(option['value'])
+        elif option['type'] == ApplicationCommandOptionType.user.value:
+            try:
+                value = members[int(option['value'])]
+            except KeyError:
+                try:
+                    value = users[int(option['value'])]
+                except KeyError:
+                    raise ValueError(f"{option['value']} can not be resolved to a user or member")
+        elif option['type'] == ApplicationCommandOptionType.channel.value:
+            try:
+                value = channels[int(option['value'])]
+            except KeyError:
+                raise ValueError(f"{option['value']} can not be resolved to a role")
+        elif option['type'] == ApplicationCommandOptionType.role.value:
+            try:
+                value = roles[int(option['value'])]
+            except KeyError:
+                raise ValueError(f"{option['value']} can not be resolved to a role")
+        else:
+            raise ValueError(f"Option has unknown type {option['type']}")
+        result[name] = value
+    return result
+
+
+def _parse_interaction_data(*, data, guild, state):
+    command = state._get_command(int(data['id']))
+    if command is None:
+        raise ValueError(f"Command has unknown ID {data['id']}")
+    users, members, roles, channels = _parse_interaction_data_resolved(
+        resolved_data=data.get('resolved'),
+        guild=guild,
+        state=state,
+    )
+    return command, _parse_interaction_options(
+        options=data.get('options', []),
+        users=users,
+        members=members,
+        roles=roles,
+        channels=channels,
+    )
+
 
 class SlashClient(Client):
     """Represents a client that handles slash commands."""
@@ -164,14 +279,18 @@ class SlashClient(Client):
             await interaction.send_response()
             
         if interaction.type == InteractionType.application_command:
-            name = interaction.command.name
-            guild_id = interaction.command.guild and interaction.command.guild.id
-            command = self.get_command(name, guild_id=guild_id)
+            app_command, options = _parse_interaction_data(
+                data=interaction.data,
+                guild=interaction.guild,
+                state=self._connection,
+            )
+            command = self.get_command(app_command.name, guild_id=interaction.guild_id)
             if command is None:
-                await interaction.send_response("No implementation available", ethemeral=True)
-            result = await command.invoke(interaction=interaction, options=interaction.options, client=self)
+                await interaction.send_response("No implementation available", ephemeral=True)
+                return
+            result = await command.invoke(interaction=interaction, options=options, client=self)
             if not interaction.responded:
                 if result:
                     await interaction.send_response(result)
                 else:
-                    await interaction.send_response("Command had no response", ethemeral=True)
+                    await interaction.send_response("Command had no response", ephemeral=True)
