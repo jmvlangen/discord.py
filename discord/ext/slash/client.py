@@ -151,12 +151,108 @@ class SlashClient(Client):
     """Represents a client that handles slash commands."""
     def __init__(self, **options):
         super().__init__(**options)
+        self.listeners = {}
         self._commands = {}
 
     def dispatch(self, event_name, *args, **kwargs):
         if event_name == 'ready':
             self._schedule_event(self._sync_commands, 'on_' + event_name, *args, **kwargs)
         super().dispatch(event_name, *args, **kwargs)
+        ev = 'on_' + event_name
+        for event in self.listeners.get(ev, []):
+            self._schedule_event(event, ev, *args, **kwargs)
+
+    # listener registration
+
+    def add_listener(self, func, name=None):
+        """The non decorator alternative to :meth:`.listen`.
+
+        Parameters
+        -----------
+        func: :ref:`coroutine <coroutine>`
+            The function to call.
+        name: Optional[:class:`str`]
+            The name of the event to listen for. Defaults to ``func.__name__``.
+
+        Example
+        --------
+
+        .. code-block:: python3
+
+            async def on_ready(): pass
+            async def my_message(message): pass
+
+            bot.add_listener(on_ready)
+            bot.add_listener(my_message, 'on_message')
+
+        """
+        name = func.__name__ if name is None else name
+
+        if not asyncio.iscoroutinefunction(func):
+            raise TypeError('Listeners must be coroutines')
+
+        if name in self.listeners:
+            self.listeners[name].append(func)
+        else:
+            self.listeners[name] = [func]
+
+    def remove_listener(self, func, name=None):
+        """Removes a listener from the pool of listeners.
+
+        Parameters
+        -----------
+        func
+            The function that was used as a listener to remove.
+        name: :class:`str`
+            The name of the event we want to remove. Defaults to
+            ``func.__name__``.
+        """
+
+        name = func.__name__ if name is None else name
+
+        if name in self.listeners:
+            try:
+                self.listeners[name].remove(func)
+            except ValueError:
+                pass
+
+    def listen(self, name=None):
+        """A decorator that registers another function as an external
+        event listener. Basically this allows you to listen to multiple
+        events from different places e.g. such as :func:`.on_ready`
+
+        The functions being listened to must be a :ref:`coroutine <coroutine>`.
+
+        Example
+        --------
+
+        .. code-block:: python3
+
+            @bot.listen()
+            async def on_message(message):
+                print('one')
+
+            # in some other file...
+
+            @bot.listen('on_message')
+            async def my_message(message):
+                print('two')
+
+        Would print one and two in an unspecified order.
+
+        Raises
+        -------
+        TypeError
+            The function being listened to is not a coroutine.
+        """
+
+        def decorator(func):
+            self.add_listener(func, name)
+            return func
+
+        return decorator
+
+    # Commands
 
     def add_command(self, command, guild_id=None):
         """Adds a :class:`.SlashCommand` into the internal list of commands.
@@ -185,7 +281,7 @@ class SlashClient(Client):
 
     def remove_command(self, name, guild_id=None):
         """Remove a :class:`SlashCommand` from the internal list of commands.
-        
+
         Parameters
         -----------
         name: :class:`str`
@@ -252,7 +348,7 @@ class SlashClient(Client):
 
         for command in commands_copy.values():
             await guild.create_application_command(name=command.name, description=command.description, options=command.options)
-        
+
     async def _sync_global_commands(self):
         commands_copy = copy.copy(self._commands.get(None, {}))
         for app_command in await self.fetch_global_commands():
@@ -268,7 +364,7 @@ class SlashClient(Client):
 
         for command in commands_copy.values():
             await self.create_global_command(name=command.name, description=command.description, options=command.options)
-    
+
     async def _sync_commands(self):
         await self._sync_global_commands()
         for guild in self.guilds:
@@ -277,7 +373,7 @@ class SlashClient(Client):
     async def on_interaction(self, interaction):
         if interaction.type == InteractionType.ping:
             await interaction.send_response()
-            
+
         if interaction.type == InteractionType.application_command:
             app_command, options = _parse_interaction_data(
                 data=interaction.data,
